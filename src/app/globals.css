@@ -1,0 +1,112 @@
+@import "tailwindcss";
+@import "keen-slider/keen-slider.min.css";
+
+
+@layer utilities {
+  .animate-slideIn {
+    animation: slideInRight 0.3s ease forwards;
+  }
+
+  .animate-slideOut {
+    animation: slideOutRight 0.3s ease forwards;
+  }
+
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0%);
+    }
+  }
+
+  @keyframes slideOutRight {
+    from {
+      transform: translateX(0%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+}
+
+
+
+
+:root {
+  --font-poppins: 'Poppins', sans-serif;
+  --color-light-grey: #797979;
+  --color-dark-grey: #333333;
+  --color-blue: #3E57A7;
+}
+
+body {
+  font-family: var(--font-poppins);
+}
+
+
+
+
+/* <--------Loader Styles--------> */
+.loader {
+  width: 50px;
+  aspect-ratio: 1;
+  display: grid;
+  border-radius: 50%;
+  background:
+    linear-gradient(
+      0deg,
+      rgba(62, 87, 167, 0.7) 30%,     /* was 0.5 → now 0.7 */
+      transparent 0 70%,
+      rgba(62, 87, 167, 1) 0
+    ) 50%/8% 100%,
+    linear-gradient(
+      90deg,
+      rgba(62, 87, 167, 0.4) 30%,     /* was 0.25 → now 0.4 */
+      transparent 0 70%,
+      rgba(62, 87, 167, 0.85) 0       /* was 0.75 → now 0.85 */
+    ) 50%/100% 8%;
+  background-repeat: no-repeat;
+  animation: l23 1s infinite steps(12);
+}
+
+.loader::before,
+.loader::after {
+  content: "";
+  grid-area: 1/1;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.94;                     /* was 0.915 */
+  transform: rotate(30deg);
+}
+
+.loader::after {
+  opacity: 0.88;                     /* was 0.83 */
+  transform: rotate(60deg);
+}
+
+@keyframes l23 {
+  100% {
+    transform: rotate(1turn);
+  }
+}
+
+/* Hide arrows in all browsers */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield; /* Firefox */
+}
+
+
+
+
+.swal2-popup {
+  max-width: 360px !important;
+  font-size: 0.875rem;
+  padding: 1.5rem;
+}
