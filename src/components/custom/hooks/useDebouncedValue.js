@@ -1,0 +1,14 @@
+import { useEffect, useState } from 'react';
+
+export default function useDebouncedValue(value, delay = 400) {
+  const [debounced, setDebounced] = useState(value);
+
+  console.log("debiunces check",debounced)
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+
+  return debounced;
+}

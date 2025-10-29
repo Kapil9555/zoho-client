@@ -1,4 +1,4 @@
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, X } from 'lucide-react'
 import { useState } from 'react'
 
 export function SelectInput({ label, options, value, onChange, required }) {
@@ -32,7 +32,7 @@ export function SelectInput({ label, options, value, onChange, required }) {
 
 
 
-export  function TextInput({
+export function TextInput({
   label,
   name,
   type = 'text',
@@ -103,3 +103,76 @@ export  function TextInput({
   )
 }
 
+
+
+export function MultiInvoiceInput({ invoices = "", onChange }) {
+  // Split the string into tags initially
+  const [values, setValues] = useState(
+    invoices ? invoices.split(",").map(v => v.trim()).filter(Boolean) : []
+  );
+  const [input, setInput] = useState("");
+
+  const updateParent = (vals) => {
+    const joined = vals.join(", ");
+    onChange?.(joined);
+  };
+
+  const addValue = (val) => {
+    const trimmed = val.trim();
+    if (!trimmed || values.includes(trimmed)) return;
+    const newValues = [...values, trimmed];
+    setValues(newValues);
+    updateParent(newValues);
+    setInput("");
+  };
+
+  const removeValue = (val) => {
+    const newValues = values.filter(v => v !== val);
+    setValues(newValues);
+    updateParent(newValues);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addValue(input);
+    }
+  };
+
+  const handleBlur = () => {
+    if (input.trim() !== "") {
+      addValue(input);
+    }
+  };
+
+
+  return (
+    <div className="flex flex-col">
+      <label className="text-md font-medium mb-1 text-gray-600">Invoice No.</label>
+
+      <div className="w-full flex flex-wrap items-center gap-2 rounded border border-gray-300 px-3 py-2 bg-white focus-within:ring-2 focus-within:ring-blue-200">
+        {values.map((v, i) => (
+          <span
+            key={i}
+            className="flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-sm"
+          >
+            {v}
+            <button type="button" onClick={() => removeValue(v)}>
+              <X size={14} />
+            </button>
+          </span>
+        ))}
+
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
+          placeholder="Type & press Enter"
+          className="flex-grow border-none outline-none text-sm bg-transparent"
+        />
+      </div>
+    </div>
+  );
+}

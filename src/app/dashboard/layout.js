@@ -2,12 +2,12 @@
 import { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
-
 import '@/app/globals.css';
 
 
 
 export default function AdminLayout({ children }) {
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (

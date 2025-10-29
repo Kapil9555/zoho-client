@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Menu } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { useGetSalesMeQuery, useLogoutSalesMutation } from '@/redux/features/api/zohoApi';
 import { showError, showSuccess } from '@/utils/customAlert';
 
@@ -27,9 +27,19 @@ export default function Topbar({ setSidebarOpen }) {
 
   const handleLogout = async () => {
     try {
-      await logoutZoho().unwrap();
+      // await logoutZoho().unwrap();
+      // await showSuccess('Success', 'Logged out successfully!');
+
+      const res = await logoutZoho().unwrap();
+      // If backend says we logged in via Azure, do Azure SSO sign-out:
+      if (res?.azureLogoutUrl) {
+        // hard redirect; don't show a toast because we're leaving the page
+        window.location.href = res.azureLogoutUrl;
+        return;
+      }
+      // normal (local) logout flow:
       await showSuccess('Success', 'Logged out successfully!');
-      router.push('/login'); 
+      router.push('/login');
     } catch (err) {
       const msg =
         err?.data?.message ||
@@ -80,12 +90,12 @@ export default function Topbar({ setSidebarOpen }) {
         </button>
 
         {dropdownOpen && (
-          <div className="absolute right-0 mt-2 w-40 bg-white border rounded-md shadow-md z-50">
+          <div className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-md shadow-md z-50">
             <button
               onClick={handleLogout}
-              className="block w-full text-left px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-red-600"
+              className="block w-full flex items-center justify-center gap-2 text-left px-4 py-2 hover:bg-gray-100 rounded-md cursor-pointer text-sm font-semibold text-red-600"
             >
-              Logout
+              <LogOut className='h-5' /> Logout
             </button>
           </div>
         )}

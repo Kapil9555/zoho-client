@@ -1,29 +1,26 @@
-'use client';
 
-import { BarChart3, Building, ClipboardList, FileText, LayoutDashboard, Users, X } from 'lucide-react';
+'use client';
+import { useGetSalesMeQuery } from '@/redux/features/api/zohoApi';
+import { AlertTriangle, BarChart3, ClipboardList, FileText, LayoutDashboard, Users, X } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import logo from '../../../../public/png/logo.png';
-import { useGetSalesMeQuery } from '@/redux/features/api/zohoApi';
 
 
 
 const menuItems = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
   { label: 'Sales Teams', icon: Users, href: '/dashboard/sales-team' },
-  // { label: 'Products', icon: Boxes, href: '/admin/products' },
-  // { label: 'Categories', icon: Tag, href: '/admin/categories' },
-  //  { label: "Orders", icon: ShoppingCart, href: "/admin/orders" },
-  // { label: "Inventory", icon: Package, href: "/admin/inventory" },
-  // { label: "Settings", icon: Settings, href: "/admin/settings" },
-  // { label: 'Business Profile', icon: Building, href: '/admin/business-profile' },
   { label: 'Invoices', icon: FileText, href: '/dashboard/invoices/All' },
   { label: 'Purchase Orders', icon: ClipboardList, href: '/dashboard/purchase-orders/All' },
   { label: 'Sales Report', icon: BarChart3, href: '/dashboard/sales-report/All' },
-
-  // { label: 'Payment Settings', icon: Banknote, href: '/admin/settings/payment' },
+  { label: 'To Recheck', icon: AlertTriangle, href: '/dashboard/to-recheck/All' },
+  { label: 'Payments Reports', icon: ClipboardList, href: '/dashboard/vendor-payments/All' },
+  { label: 'Vendors', icon: Users, href: '/dashboard/vendors' },
+  { label: 'Daily Reports', icon: ClipboardList, href: '/dashboard/daily-reports/All' }
 ];
+
 
 
 
@@ -33,15 +30,15 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
 
   const isAdmin = !!me?.isAdmin || me?.role === "admin";
 
-
-
   const router = useRouter();
   const pathname = usePathname();
+  
 
   const sidebarContent = (
     <div className="w-64 h-full bg-white border-r border-gray-100 flex flex-col">
       {/* Logo and Close (Mobile Only) */}
       <div className="flex justify-between items-center px-4 py-3 md:justify-center md:py-[18px] border-b border-b-gray-100 cursor-pointer">
+       
         <Image
           src={logo}
           alt="Logo"
@@ -49,6 +46,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
           height={35}
           onClick={() => router.push('/dashboard')}
         />
+
         <button
           onClick={() => setSidebarOpen(false)}
           className="text-gray-600 md:hidden"
@@ -63,8 +61,14 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
           <div className="text-gray-500 uppercase text-sm mb-3">Menu</div>
           <div className="space-y-3">
             {menuItems.map(({ label, icon: Icon, href }) => {
+
               const isActive = pathname === href;
+
               if(!isAdmin && label == 'Sales Teams') return
+              if(!isAdmin && label == 'To Recheck') return
+              if(!isAdmin && label == 'Vendors') return
+              if(!isAdmin && label == 'Payments Reports') return
+
               return (
                 <Link
                   key={label}
@@ -85,6 +89,8 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
     </div>
   );
 
+
+
   return (
     <>
       {/* Desktop Sidebar */}
@@ -92,16 +98,17 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
 
       {/* Mobile Drawer Sidebar with slide effect */}
       {sidebarOpen && (
+
         <div className="fixed inset-0 z-40 md:hidden flex">
+
           {/* Overlay */}
+
           <div
             className="absolute inset-0 bg-black opacity-30"
             onClick={() => setSidebarOpen(false)}
           />
           {/* Sliding Drawer */}
-          <div
-            className={`relative z-50 w-64 h-full bg-white shadow-lg transform transition-transform duration-300 ease-in-out translate-x-0`}
-          >
+          <div className={`relative z-50 w-64 h-full bg-white shadow-lg transform transition-transform duration-300 ease-in-out translate-x-0`}>
             {sidebarContent}
           </div>
         </div>

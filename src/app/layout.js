@@ -15,6 +15,7 @@ const poppins = Poppins({
 export const metadata = {
   title: 'Tech4Logic',
   description: 'Your app description',
+  
 }
 
 export default function RootLayout({ children }) {

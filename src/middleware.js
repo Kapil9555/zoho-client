@@ -26,5 +26,5 @@ export function middleware(request) {
 
 export const config = {
   // skip Next internals and API routes
-  matcher: ['/((?!_next|favicon.ico|api|assets).*)'],
+  matcher: ['/((?!_next|favicon.ico|api|assets|callback).*)'],
 };

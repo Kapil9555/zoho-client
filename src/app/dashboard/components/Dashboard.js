@@ -1,42 +1,41 @@
 'use client'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-    ResponsiveContainer,
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip as RechartsTooltip,
-    PieChart,
-    Pie,
-    Cell,
-    Rectangle,
-} from "recharts";
-import { MoreVertical, ArrowUpRight, ArrowDownRight, CheckCircle, XCircle, IndianRupee, Target, TrendingUp, Trophy, Wallet } from "lucide-react";
+import Loader from "@/components/custom/ui/Loader";
 import {
     useGetCrmInvoicesQuery,
-    useGetCrmPurchaseOrdersQuery,
+    // useGetCrmPurchaseOrdersQuery,
     useGetSalesMembersQuery,
     useGetSalesMeQuery,
+    useTriggerZohoBackfillMutation,
 } from "@/redux/features/api/zohoApi";
-import Loader from "@/components/custom/ui/Loader";
+import { ArrowDownRight, ArrowUpRight, CheckCircle, IndianRupee, MoreVertical, Target, TrendingUp, Trophy, Wallet, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, Tooltip as RechartsTooltip, Rectangle, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import BackfillWithCalendar from "./BackfillWithCalendar";
+
 
 /* ================= THEME ================= */
-const THEME = "#3E57A7";     // Achieved
-const THEME_600 = "#566DB9";  // Over Target
-const THEME_300 = "#9AABE0";  // Remaining to Target
+
+
+const THEME = "#3E57A7";
+const THEME_600 = "#566DB9";
+const THEME_300 = "#9AABE0";
 const TRACK = "#F3F4F6";
 
 const now = new Date();
 const demoMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
 const days = Array.from({ length: 13 }, (_, i) => i + 1);
 
+
+
 /* =============== Small UI bits =============== */
+
+
 const Dot = ({ color }) => (
     <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
 );
+
 
 function Delta({ value, positive = true }) {
     return (
@@ -50,26 +49,18 @@ function Delta({ value, positive = true }) {
     );
 }
 
-function StatusBadge({ status }) {
-    const map = {
-        Paid: { bg: "bg-green-50", text: "text-green-700", ring: "ring-green-200" },
-        Pending: { bg: "bg-amber-50", text: "text-amber-700", ring: "ring-amber-200" },
-        Overdue: { bg: "bg-red-50", text: "text-red-700", ring: "ring-red-200" },
-        sent: { bg: "bg-blue-50", text: "text-blue-700", ring: "ring-blue-200" },
-    };
-    const s = map[status] || map[status?.toLowerCase()] || { bg: "bg-gray-50", text: "text-gray-700", ring: "ring-gray-200" };
-    return (
-        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${s.bg} ${s.text} ring-1 ${s.ring}`}>
-            {status || "-"}
-        </span>
-    );
-}
+
 
 /* Tooltip for per-PI profit chart */
 function TopPiTooltip({ active, payload }) {
     if (!active || !payload?.length) return null;
     const p = payload[0]?.payload || {};
-    const margin = p.invoiceTotal ? Math.round((p.profitRaw / p.invoiceTotal) * 100) : 0;
+
+    // this is calculating the percentage over invoice total
+    // const margin = p.invoiceTotal ? Math.round((p.profitRaw / p.invoiceTotal) * 100) : 0;
+
+    // this is calculating profit over po
+    const margin = p.poTotal ? Math.round((p.profitRaw / p.poTotal) * 100) : 0;
 
     return (
         <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-md">
@@ -93,6 +84,8 @@ function TopPiTooltip({ active, payload }) {
         </div>
     );
 }
+
+
 
 /* NEW: tooltip for team stacked bars (All) */
 function TeamBarsTooltip({ active, payload }) {
@@ -132,6 +125,8 @@ function TeamBarsTooltip({ active, payload }) {
         </div>
     );
 }
+
+
 
 function ReturningCustomersCard({
     title = "Returning Customers",
@@ -240,6 +235,7 @@ function ReturningCustomersCard({
                     onTouchEnd={handleTouchEnd}
                 >
                     <ResponsiveContainer width="100%" height="100%">
+
                         <PieChart>
                             {/* OUTER TRACK */}
                             <Pie
@@ -270,6 +266,7 @@ function ReturningCustomersCard({
                             </Pie>
 
                             {/* INNER TRACK */}
+
                             <Pie
                                 data={[{ v: 100 }]}
                                 dataKey="v"
@@ -284,6 +281,7 @@ function ReturningCustomersCard({
                             </Pie>
 
                             {/* INNER PROGRESS */}
+
                             <Pie
                                 data={[{ v: 1 }]}
                                 dataKey="v"
@@ -297,73 +295,90 @@ function ReturningCustomersCard({
                                 <Cell fill={THEME_600} />
                             </Pie>
                         </PieChart>
+
                     </ResponsiveContainer>
 
                     {/* Center label */}
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+
                         <div className="text-3xl font-semibold text-gray-900 transition-opacity duration-150">
                             {hoverLabel || `₹${formatIndianAmount(pureProfit)}`}
                         </div>
+
                     </div>
 
+                </div>
+
+            </div>
+
+
+            {/* Monthly Target (2-line, 4 points) */}
+            <div className="mt-8">
+                <h4 className="bg-gray-100 px-3 py-1.5 flex items-center gap-2 rounded font-semibold text-md text-gray-700">
+                    <Target className="h-4 w-4" color={THEME} /> Monthly Targets
+                </h4>
+
+                <div className="mt-3 space-y-3">
+                    {/* Row 1: Top line + Achieved */}
+                    <div className="rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 hover:bg-gray-50 transition-colors">
+                        {/* Top line (label + amount) */}
+                        <div className="flex items-baseline gap-2 mb-2">
+                            <span className="text-md text-gray-600 whitespace-nowrap">Top Line :</span>
+                            <span className="text-md font-semibold text-gray-900">{topLineAmount}</span>
+                        </div>
+
+                        {/* Achieved (label + amount) */}
+                        <div className="flex items-baseline gap-2">
+
+                            <span className="text-md text-gray-600 whitespace-nowrap">Achieved :</span>
+                            <span className="text-md font-semibold text-gray-900">{totalSales}</span>
+                        </div>
+                    </div>
+
+                    {/* Row 2: Bottom line + Achieved */}
+                    <div className="rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 hover:bg-gray-50 transition-colors">
+                        {/* Bottom line (label + amount) */}
+                        <div className="flex items-baseline gap-2 mb-2">
+
+                            <span className="text-md text-gray-600 whitespace-nowrap">Bottom Line :</span>
+                            <span className="text-md font-semibold text-gray-900">{outerAmount}</span>
+                        </div>
+
+                        {/* Achieved (label + amount) */}
+                        <div className="flex items-baseline gap-2">
+
+                            <span className="text-sm text-gray-600 whitespace-nowrap">Achieved :</span>
+                            <span className="text-md font-semibold text-gray-900">{innerAmount}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div className="mt-8 space-y-6 text-center">
 
-                <div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Target color={THEME} />
-                        <span>{topLineLabel}</span>
-                    </div>
-                    <div className="mt-1 text-xl font-medium text-gray-900">{topLineAmount}</div>
-                </div>
-
-                <div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <TrendingUp color={THEME} />
-                        <span>{topLineAch}</span>
-                    </div>
-                    <div className="mt-1 text-xl font-medium text-gray-900">{totalSales}</div>
-                </div>
-
-                <div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Wallet color={THEME} />
-                        <span>{bottomLineLabel}</span>
-                    </div>
-                    <div className="mt-1 text-xl font-medium text-gray-900">{outerAmount}</div>
-                </div>
-
-                <div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <CheckCircle color={THEME} />
-                        <span>{bottomLineAchLabel}</span>
-                    </div>
-                    <div className="mt-1 text-xl font-medium text-gray-900">{innerAmount}</div>
-                </div>
-
-
-
-
-            </div>
         </div>
     );
 }
 
+
 /* ======================= MAIN PAGE ======================= */
 export default function DashboardOverview() {
+
     const router = useRouter();
     const [month, setMonth] = useState(demoMonth);
     const [invPage, setInvPage] = useState(1);
     const [poPage, setPoPage] = useState(1);
-    const limit = 10;
+    const limit = 5000;
 
     const { data: me } = useGetSalesMeQuery();
+
     const isAdmin = !!me?.isAdmin || me?.role === "admin";
 
+    // console.log("me check",me)
+
     /* ====== Fetch ALL sales team ====== */
+
     const TEAM_LIMIT = 10000;
+
     const [teamSearch] = useState("");
 
     const teamArgs = useMemo(
@@ -375,11 +390,14 @@ export default function DashboardOverview() {
         [teamSearch]
     );
 
+
     const {
         data: teamData,
         isFetching: teamFetching,
         isLoading: teamLoading,
     } = useGetSalesMembersQuery(teamArgs, { refetchOnMountOrArgChange: true });
+
+
 
     // Normalize team response shape
     const teamRows =
@@ -392,9 +410,11 @@ export default function DashboardOverview() {
 
     // Selected person
     const [personId, setPersonId] = useState("all");
+
     const [selectedSalesMember, setSelectedSalesMember] = useState(null);
 
     // Helper: match logged-in user to a team row
+
     const findMyTeamRow = useCallback(() => {
         if (!me || !teamRows?.length) return null;
         const candidates = [
@@ -406,6 +426,7 @@ export default function DashboardOverview() {
     }, [me, teamRows]);
 
     // Role-aware selection: admins free; sales locked to self
+
     useEffect(() => {
         if (!teamRows.length) return;
 
@@ -432,11 +453,26 @@ export default function DashboardOverview() {
         }
     }, [teamRows, personId, isAdmin, findMyTeamRow]);
 
+
     // Name for invoice filter (blank => all)
+
+
+    // const personName = useMemo(() => {
+    //     if (personId === "all") return "";
+    //     return teamRows.find((p) => p._id === personId)?.name ?? "";
+    // }, [personId, teamRows]);
+
+
     const personName = useMemo(() => {
-        if (personId === "all") return "";
-        return teamRows.find((p) => p._id === personId)?.name ?? "";
-    }, [personId, teamRows]);
+           // Non-admins: even if personId is still "all", use me.name to avoid the initial "All" fetch
+               if (!isAdmin && personId === "all") return me?.name ?? "";
+           if (personId === "all") return "";
+           return teamRows.find((p) => p._id === personId)?.name ?? "";
+         }, [isAdmin, personId, teamRows, me]);
+
+         
+    // console.log("person name", personName)
+
 
     /* ====== LIVE INVOICES ====== */
     const invoiceArgs = useMemo(() => {
@@ -445,26 +481,28 @@ export default function DashboardOverview() {
         return q;
     }, [invPage, limit, month, personName]);
 
+
+    const shouldSkipInvoices = !isAdmin && personId === "all";
+
+
     const {
         data: invData,
         isFetching: invFetching,
         isLoading: invLoading,
         isError: invError,
         error: invErr,
-    } = useGetCrmInvoicesQuery(invoiceArgs);
+    } = useGetCrmInvoicesQuery(invoiceArgs, { skip: shouldSkipInvoices });
 
-    const {
-        isFetching: poFetching,
-        isLoading: poLoading,
-    } = useGetCrmPurchaseOrdersQuery(invoiceArgs);
+    // const {isFetching: poFetching,isLoading: poLoading  } = useGetCrmPurchaseOrdersQuery(invoiceArgs);
 
     const invoices = invData?.raw?.data ?? [];
+
     const piSummary = invData?.raw?.piSummary ?? [];
 
-    const truncate = (str, max = 12) =>
-        (str ? (str.length > max ? str.slice(0, max - 1) + "…" : str) : "—");
+    const truncate = (str, max = 12) => (str ? (str.length > max ? str.slice(0, max - 1) + "…" : str) : "—");
 
     const top10PI = useMemo(() => {
+
         const rows = (piSummary || []).map((r) => {
             const customerName = (r.customerName || "").toString();
             const profitRaw = Number(r.difference) || 0;
@@ -480,11 +518,14 @@ export default function DashboardOverview() {
         });
 
         rows.sort((a, b) => b.profit - a.profit);
+
         return rows.slice(0, 10);
+
     }, [piSummary]);
 
     /* ====== Case-insensitive, unique salesperson aggregation ====== */
     const normalize = (s = "") => s.trim().toLowerCase();
+
 
     // Sum profit by normalized salesperson name
     const profitBySalesperson = useMemo(() => {
@@ -497,6 +538,7 @@ export default function DashboardOverview() {
         });
         return map;
     }, [piSummary]);
+
 
     // Index team members by normalized name (choose one display name + target)
     const teamIndex = useMemo(() => {
@@ -519,6 +561,8 @@ export default function DashboardOverview() {
 
 
     // Build stacked bars for "All": TOP 10 by achieved (profit)
+
+
     const teamBars = useMemo(() => {
         const rows = [];
         const keys = new Set([
@@ -546,9 +590,12 @@ export default function DashboardOverview() {
 
     }, [teamIndex, profitBySalesperson]);
 
+
     /* ====== Overall / percentages ====== */
     const overAll = invData?.raw?.overall || {};
+
     const invoiceSum = Number(overAll?.invoiceSum) || 0;
+
     const profitSum = Number(overAll?.profit) || 0;
 
     const clampPct = (n) => Math.max(0, Math.min(100, Math.round(n)));
@@ -567,8 +614,6 @@ export default function DashboardOverview() {
         [teamRows]
     );
 
-
-
     // console.log("totalTeaTopLinetotalTeaTopLine", totalTeaTopLine)
 
 
@@ -582,7 +627,6 @@ export default function DashboardOverview() {
         return v.toLocaleString("en-IN");
     };
 
-
     const pct = (num, den) => {
         const n = Number(num) || 0;
         const d = Number(den) || 0;
@@ -592,17 +636,16 @@ export default function DashboardOverview() {
         return Math.max(0, Math.min(100, p));
     };
 
-    // %s
+    // %
+
     const profitVsSalesPct = useMemo(() => pct(invoiceSum, totalTeamTopLine), [totalTeamTopLine, invoiceSum]);
-
-
-
 
     const achievementAllPct = useMemo(() => pct(profitSum, totalTeamTarget), [profitSum, totalTeamTarget]);
 
     const innerPercentSingle = useMemo(() => pct(profitSum, selectedSalesMember?.monthlyTarget), [profitSum, selectedSalesMember?.monthlyTarget]);
     // keep outer = profit/sales (fix dependency to invoiceSum)
     const outerPercentSingle = useMemo(() => pct(profitSum, invoiceSum), [profitSum, invoiceSum]);
+
     const achievementPersonPct = useMemo(() => pct(profitSum, selectedSalesMember?.monthlyTarget), [profitSum, selectedSalesMember?.monthlyTarget]);
 
     const handleSeeAll = () => {
@@ -630,6 +673,12 @@ export default function DashboardOverview() {
         );
     };
 
+    // console.log("invData?.raw?.piSummary", invData?.raw?.piSummary)
+
+
+
+    // console.log(" (isAdmin && (me?.email == 'rahul.singh@tech4logic.com",me?.email,me?.email?.trim() == 'rahul.singh@tech4logic.com')
+
     return (
         <div className="w-full bg-[#fafbfe] p-6 md:p-8">
             {/* Header with controls */}
@@ -646,7 +695,9 @@ export default function DashboardOverview() {
 
                     <p className="mt-1 text-gray-500">Sales dashboard — track monthly performance against targets</p>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <input
                         type="month"
                         value={month}
@@ -672,6 +723,12 @@ export default function DashboardOverview() {
                             ))}
                         </select>
                     )}
+
+                    {
+                        (isAdmin && (me?.email == 'pawan@gmail.com' || me?.email == 'varun.singh@tech4logic.com' || me?.email == 'rahul.singh@tech4logic.com')) &&
+                        <BackfillWithCalendar />
+                    }
+
                 </div>
             </div>
 
@@ -793,7 +850,8 @@ export default function DashboardOverview() {
                                     </div>
                                 </div>
                                 <div className="mt-1 text-2xl font-semibold tracking-tight text-gray-900">
-                                    {`₹${(Number(overAll?.invoiceSum) || 0).toLocaleString("en-IN")}`}
+                                    {/* {`₹${(Number(overAll?.invoiceSum) || 0).toLocaleString("en-IN")}`} */}
+                                    {`₹${(Number(overAll?.invoiceSum) || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                                 </div>
                                 <div className="mt-2 text-xs text-gray-400">Overall billed amount</div>
                             </div>
@@ -914,49 +972,40 @@ export default function DashboardOverview() {
                             outerPercent={profitVsSalesPct}
                             innerPercent={achievementAllPct}
                             outerLabel="Overall Target"
-                            outerAmount={`₹${totalTeamTarget.toLocaleString("en-IN")}`}
+                            outerAmount={`₹${Number(totalTeamTarget).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                             innerLabel="Achieved (Profit)"
-                            innerAmount={`₹${profitSum.toLocaleString("en-IN")}`}
+                            innerAmount={`₹${Number(profitSum).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                             pureProfit={profitSum}
-                            totalSales={`₹${(Number(overAll?.invoiceSum) || 0).toLocaleString("en-IN")}`}
-
-
-                            topLineLabel={"Monthly Target Top Line"}
-                            topLineAmount={totalTeamTopLine}
-
-                            topLineAch={"Monthly Target Top Line Achieved"}
-
-                            bottomLineLabel={"Monthly Target Bottom Line"}
-
-                            bottomLineAchLabel={"All Monthly Target Bottom Line"}
+                            totalSales={`₹${Number(overAll?.invoiceSum || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                            topLineLabel="Monthly Target Top Line"
+                            topLineAmount={`₹${Number(totalTeamTopLine || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                            topLineAch="Monthly Target Top Line Achieved"
+                            bottomLineLabel="Monthly Target Bottom Line"
+                            bottomLineAchLabel="Monthly Target Bottom Line Achievement"
                         />
                     ) : (
                         <ReturningCustomersCard
                             className="h-full"
-                            topLineLabel={"Monthly Target Top Line"}
-                            topLineAmount={selectedSalesMember?.topLine}
-
-                            topLineAch={"Monthly Target Top Line Achieved"}
-
-                            bottomLineLabel={"Monthly Target Bottom Line"}
-
-                            bottomLineAchLabel={"All Monthly Target Bottom Line"}
-
-
+                            topLineLabel="Monthly Target Top Line"
+                            topLineAmount={`₹${Number(selectedSalesMember?.topLine || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                            topLineAch="Monthly Target Top Line Achieved"
+                            bottomLineLabel="Monthly Target Bottom Line"
+                            bottomLineAchLabel="Monthly Target Bottom Line"
                             totalLabel={`${innerPercentSingle}%`}
                             outerPercent={outerPercentSingle}
                             innerPercent={innerPercentSingle}
                             outerLabel="Target"
                             outerAmount={
                                 selectedSalesMember?.monthlyTarget
-                                    ? `₹${Number(selectedSalesMember.monthlyTarget).toLocaleString("en-IN")}`
+                                    ? `₹${Number(selectedSalesMember.monthlyTarget).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                                     : "N/A"
                             }
                             innerLabel="Achieved (Profit)"
                             pureProfit={profitSum}
-                            innerAmount={`₹${profitSum.toLocaleString("en-IN")}`}
-                            totalSales={`₹${(Number(overAll?.invoiceSum) || 0).toLocaleString("en-IN")}`}
+                            innerAmount={`₹${Number(profitSum).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                            totalSales={`₹${Number(overAll?.invoiceSum || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                         />
+
                     )}
                 </div>
             </div>
@@ -1008,17 +1057,11 @@ export default function DashboardOverview() {
                                     </td>
                                 </tr>
                             ) : (
-                                invoices.map((inv, i) => (
+                                invoices.slice(0, 10)?.map((inv, i) => (
                                     <tr key={inv._id || inv.invoice_number || inv.invoice_id} className="hover:bg-gray-50/60">
                                         <td className="px-4 py-3 text-gray-900">{i + 1}</td>
                                         <td className="px-4 py-3 font-medium text-gray-900">
-                                            {inv.invoice_url ? (
-                                                <a href={inv.invoice_url} target="_blank" rel="noreferrer" className="text-[#3E57A7] hover:underline">
-                                                    {inv.invoice_number || "-"}
-                                                </a>
-                                            ) : (
-                                                inv.invoice_number || "-"
-                                            )}
+                                            {inv.invoice_number}
                                         </td>
                                         <td className="px-4 py-3 text-gray-700">
                                             {inv.date ? new Date(inv.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
@@ -1037,8 +1080,9 @@ export default function DashboardOverview() {
                 </div>
             </div>
 
+
             {/* ================= OVERALL TABLE (LIVE) ================= */}
-            <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            {/* <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-lg font-semibold text-gray-900">
                         Sales Report — {personName || "All"}
@@ -1058,8 +1102,120 @@ export default function DashboardOverview() {
                                 <th className="px-4 py-3">S.No</th>
                                 <th className="px-4 py-3">Customer</th>
                                 <th className="px-4 py-3">Sales Person</th>
-                                <th className="px-4 py-3 text-right whitespace-nowrap">Invoice Total (₹)</th>
-                                <th className="px-4 py-3 text-right whitespace-nowrap">PO Total (₹)</th>
+                                <th className="px-4 py-3  whitespace-nowrap">Invoice Total (₹)</th>
+                                <th className="px-4 py-3  whitespace-nowrap">PO Total (₹)</th>
+                                <th className="px-4 py-3">Profit</th>
+                                <th className="px-4 py-3"></th>
+                            </tr>
+                        </thead>
+
+
+                        <tbody className="divide-y divide-gray-100">
+                            {invLoading || invFetching ? (
+                                <tr>
+                                    <td colSpan={7} className="px-4 py-6 text-center text-gray-500">Loading…</td>
+                                </tr>
+                            ) : invError ? (
+                                <tr>
+                                    <td colSpan={7} className="px-4 py-6 text-center text-red-600">
+                                        {invErr?.data?.message || "Failed to load invoices."}
+                                    </td>
+                                </tr>
+                            ) : (invData?.raw?.piSummary ?? []).length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
+                                        No invoices found for this selection.
+                                    </td>
+                                </tr>
+                            ) :
+                                (invData?.raw?.piSummary ?? []).map((inv, i) => {
+                                    const profit = Number(inv.difference) || 0;
+                                    // treat +/- 0.004 as 0.00
+                                    const isZeroProfit = Math.abs(profit) < 0.005;
+                                    const isManual = !!inv.overrideApplied; // <-- new
+
+                                    const rowCls = isManual
+                                        ? "bg-purple-200 text-gray-900"
+                                        : (isZeroProfit ? "bg-red-600 text-gray-300" : "hover:bg-gray-100 text-gray-900");
+
+                                    const firstTdRound = (isManual || isZeroProfit) ? "rounded-l-[10px]" : "";
+                                    const lastTdRound = (isManual || isZeroProfit) ? "rounded-r-[10px]" : "";
+
+                                    return (
+                                        <tr
+                                            key={inv._id || inv.pi || inv.invoice_id}
+                                            className={rowCls}
+                                            style={{ marginTop: "5px", borderRadius: "12px", overflow: "hidden" }}
+                                        >
+                                            <td className={`px-4 py-3 font-medium whitespace-nowrap `}>
+                                                {i + 1}
+                                            </td>
+                                            <td className="px-4 py-3 whitespace-nowrap">{inv.customerName || "-"}</td>
+                                            <td className="px-4 py-3 whitespace-nowrap">{inv.salespersonName || "-"}</td>
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                {(Number(inv.invoiceTotal) || 0).toLocaleString("en-IN")}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {(Number(inv.poTotal) || 0).toLocaleString("en-IN")}
+                                            </td>
+                                            <td
+                                                className={[
+                                                    "px-4 py-3 font-semibold whitespace-nowrap",
+                                                    isZeroProfit
+                                                        ? `text-gray-300`
+                                                        : profit > 0
+                                                            ? "text-green-600"
+                                                            : profit < 0
+                                                                ? "text-red-600"
+                                                                : "text-gray-900",
+                                                ].join(" ")}
+                                            >
+                                                {profit.toLocaleString("en-IN", {
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2,
+                                                })}
+
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            }
+                        </tbody>
+
+                    </table>
+                </div>
+            </div> */}
+
+
+            <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-gray-900">
+                        Sales Report — {personName || "All"}
+                    </h2>
+                    <button
+                        onClick={handleSeeAllSales}
+                        className="text-sm font-medium cursor-pointer text-[#3E57A7]"
+                    >
+                        See All →
+                    </button>
+                </div>
+
+                {/* Non-admin notice */}
+                {(() => { try { return !isAdmin; } catch { return true; } })() && (
+                    <div className="mb-3 rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+                        Some records are hidden until an admin approves them. Once approved, they will appear here.
+                    </div>
+                )}
+
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-left">
+                        <thead>
+                            <tr className="text-xs uppercase tracking-wide text-gray-500">
+                                <th className="px-4 py-3">S.No</th>
+                                <th className="px-4 py-3">Customer</th>
+                                <th className="px-4 py-3">Sales Person</th>
+                                <th className="px-4 py-3  whitespace-nowrap">Invoice Total (₹)</th>
+                                <th className="px-4 py-3  whitespace-nowrap">PO Total (₹)</th>
                                 <th className="px-4 py-3">Profit</th>
                                 <th className="px-4 py-3"></th>
                             </tr>
@@ -1068,9 +1224,7 @@ export default function DashboardOverview() {
                         <tbody className="divide-y divide-gray-100">
                             {invLoading || invFetching ? (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
-                                        Loading…
-                                    </td>
+                                    <td colSpan={7} className="px-4 py-6 text-center text-gray-500">Loading…</td>
                                 </tr>
                             ) : invError ? (
                                 <tr>
@@ -1085,51 +1239,63 @@ export default function DashboardOverview() {
                                     </td>
                                 </tr>
                             ) : (
-                                (invData?.raw?.piSummary ?? []).map((inv, i) => {
-                                    const poTotal = Number(inv.poTotal) || 0
+                                (invData?.raw?.piSummary?.slice(0, 10) ?? []).map((inv, i) => {
+                                    const profit = Number(inv.difference) || 0;
+                                    const isZeroProfit = Math.abs(profit) < 0.005;
+                                    const isManual = !!inv.overrideApplied;
+
+                                    // Safe read of isAdmin (defaults to false if not defined in scope)
+                                    const _isAdmin = (() => { try { return !!isAdmin; } catch { return false; } })();
+
+                                    // Non-admins: skip rendering zero-profit (red) rows entirely
+                                    if (!_isAdmin && isZeroProfit) return null;
+
+                                    // Row background: only admins see purple/red highlighting
+                                    const rowCls = _isAdmin
+                                        ? (isManual
+                                            ? "bg-purple-200 text-gray-900"
+                                            : (isZeroProfit
+                                                ? "bg-red-600 text-gray-300"
+                                                : "hover:bg-gray-100 text-gray-900"))
+                                        : "hover:bg-gray-100 text-gray-900";
+
                                     return (
                                         <tr
-                                            key={inv._id || inv.pi || inv.invoice_id}
-                                            className={`${poTotal === 0
-                                                ? "bg-red-600 text-gray-300"
-                                                : "hover:bg-gray-100 text-gray-900"
-                                                }`}
+                                            key={inv._id || inv.pi || inv.invoice_id || i}
+                                            className={rowCls}
+                                            style={{ marginTop: "5px", borderRadius: "12px", overflow: "hidden" }}
                                         >
-                                            <td
-                                                className={`px-4 py-3 font-medium whitespace-nowrap ${poTotal === 0 ? "rounded-l-[10px]" : ""
-                                                    }`}
-                                            >
+                                            <td className="px-4 py-3 font-medium whitespace-nowrap">
                                                 {i + 1}
                                             </td>
-                                            <td className="px-4 py-3">{inv.customerName || "-"}</td>
+                                            <td className="px-4 py-3 whitespace-nowrap">{inv.customerName || "-"}</td>
+                                            <td className="px-4 py-3 whitespace-nowrap">{inv.salespersonName || "-"}</td>
                                             <td className="px-4 py-3 whitespace-nowrap">
-                                                {inv.salespersonName || "-"}
-                                            </td>
-                                            <td className="px-4 py-3 text-right whitespace-nowrap">
                                                 {(Number(inv.invoiceTotal) || 0).toLocaleString("en-IN")}
                                             </td>
                                             <td className="px-4 py-3">
                                                 {(Number(inv.poTotal) || 0).toLocaleString("en-IN")}
                                             </td>
                                             <td
-                                                className={`px-4 py-3 font-semibold ${poTotal === 0
-                                                    ? "text-gray-300 rounded-r-[10px]"
-                                                    : inv.difference > 0
-                                                        ? "text-green-600"
-                                                        : inv.difference < 0
-                                                            ? "text-red-600"
-                                                            : "text-gray-900"
-                                                    }`}
+                                                className={[
+                                                    "px-4 py-3 font-semibold whitespace-nowrap",
+                                                    isZeroProfit
+                                                        ? "text-gray-300"
+                                                        : profit > 0
+                                                            ? "text-green-600"
+                                                            : profit < 0
+                                                                ? "text-red-600"
+                                                                : "text-gray-900",
+                                                ].join(" ")}
                                             >
-                                                {(Number(inv.difference) || 0).toLocaleString("en-IN", {
+                                                {profit.toLocaleString("en-IN", {
                                                     minimumFractionDigits: 2,
                                                     maximumFractionDigits: 2,
                                                 })}
                                             </td>
+                                            <td className="px-4 py-3"></td>
                                         </tr>
-
-
-                                    )
+                                    );
                                 })
                             )}
                         </tbody>
@@ -1137,7 +1303,35 @@ export default function DashboardOverview() {
                 </div>
             </div>
 
-            {(invLoading || invFetching || poLoading || poFetching || teamLoading || teamFetching) && <Loader />}
+
+            {(invLoading || invFetching || teamLoading || teamFetching) && <Loader />}
         </div>
+    );
+}
+
+
+function HardRefetchButton() {
+    const [trigger, { isLoading, isSuccess }] = useTriggerZohoBackfillMutation();
+
+    console.log("isloading check", isLoading)
+
+    const handleClick = async () => {
+        try {
+            await trigger({ preset: "last-two-months" }).unwrap();
+            // optional: toast.success("Backfill started");
+        } catch (err) {
+            // optional: toast.error(err?.data?.message || "Failed to start backfill");
+            console.error(err);
+        }
+    };
+
+    return (
+        <button
+            onClick={handleClick}
+            disabled={isLoading}
+            className="px-3 py-2 rounded-lg cursor-pointer text-white bg-[#3E57A7] hover:opacity-90 disabled:bg-gray-400"
+        >
+            {isLoading ? "Starting…" : "Hard Refetch Now"}
+        </button>
     );
 }

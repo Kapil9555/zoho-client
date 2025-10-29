@@ -41,11 +41,13 @@ export default function CustomTable({
   onInvoiceClick = () => {},
   emptyMessage = 'No records found',
 
-  /* === NEW, optional & safe defaults (won't affect other pages) === */
+  /* === highlight options === */
   highlightZeroPO = false,
   zeroPOTextClass = '[&>td]:!text-gray-300 [&>td_*]:!text-gray-300',
   rowClassName,
   collapseForRowHighlight = false,
+  highlightManual,
+  manualTextClass = '',
 }) {
   const safeData = Array.isArray(data) ? data : [];
   const safeColumns = Array.isArray(columns) ? columns : [];
@@ -151,9 +153,9 @@ export default function CustomTable({
       <div className="max-w-full overflow-x-auto">
         <table
           className={[
-            "min-w-full text-sm text-left text-slate-700 border-separate border-spacing-y-2", // 👈 add spacing between rows
-            collapseForRowHighlight ? "" : "",
-          ].join(" ")}
+            'min-w-full text-sm text-left text-slate-700 border-separate border-spacing-y-2',
+            collapseForRowHighlight ? '' : '',
+          ].join(' ')}
         >
           <thead className="bg-slate-100">
             <tr>
@@ -183,7 +185,36 @@ export default function CustomTable({
           <tbody>
             {safeData.length > 0 ? (
               safeData.map((row, idx) => {
-                const isZeroPO = highlightZeroPO && Number(row?.poTotal) === 0;
+                const isZeroPO = highlightZeroPO && Number(row?.difference) === 0;
+                
+                const isManual = highlightManual && !!row?.overrideApplied;
+
+                // ➜ Disable edit if profit > 0 and NOT overrideApplied
+                const profitValue = Number(row?.difference ?? row?.profit ?? 0);
+                {/* const editDisabled = profitValue > 0 && !row?.overrideApplied; */}
+
+                const editDisabled = false;
+
+                // shared rounded corners for highlighted rows
+                const roundedCls =
+                  '[&>td:first-child]:rounded-l-[10px] [&>td:last-child]:rounded-r-[10px]';
+
+                // zero-profit style (red)
+                const zeroCls = [
+                  '[&>td]:bg-red-600',
+                  roundedCls,
+                  zeroPOTextClass,
+                  'hover:bg-transparent',
+                  '[&>td]:text-gray-300 [&>td_*]:text-inherit',
+                ].join(' ');
+
+                // manual override style (light purple)
+                const manualCls = [
+                  '[&>td]:bg-purple-200',
+                  roundedCls,
+                  manualTextClass || '',
+                  'hover:bg-transparent',
+                ].join(' ');
 
                 return (
                   <tr
@@ -191,16 +222,7 @@ export default function CustomTable({
                     onClick={() => onRowClick?.(row)}
                     className={[
                       'cursor-pointer',
-                      isZeroPO
-                        ? [
-                            '[&>td]:bg-red-600',
-                            '[&>td:first-child]:rounded-l-[10px]',
-                            '[&>td:last-child]:rounded-r-[10px]',
-                            zeroPOTextClass,
-                            'hover:bg-transparent',
-                            '[&>td]:text-gray-300 [&>td_*]:text-inherit',
-                          ].join(' ')
-                        : 'hover:bg-gray-100',
+                      isZeroPO ? zeroCls : isManual ? manualCls : 'hover:bg-gray-100',
                       rowClassName?.(row, idx) || '',
                     ].join(' ')}
                   >
@@ -277,18 +299,30 @@ export default function CustomTable({
                               <Eye className="w-4 h-4" />
                             </button>
                           )}
+
                           {actions.includes('edit') && (
                             <button
-                              className="text-amber-500 cursor-pointer"
+                              className={
+                                editDisabled
+                                  ? 'text-amber-300 opacity-40 cursor-not-allowed'
+                                  : 'text-amber-500 cursor-pointer'
+                              }
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (editDisabled) return;
                                 onEditClick?.(row);
                               }}
-                              title="Edit"
+                              title={
+                                editDisabled
+                                  ? 'Edit disabled: positive profit without manual override'
+                                  : 'Edit'
+                              }
+                              disabled={editDisabled}
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
                           )}
+
                           {actions.includes('delete') && (
                             <button
                               onClick={(e) => {
@@ -301,6 +335,7 @@ export default function CustomTable({
                               <Trash2 className="w-4 h-4 cursor-pointer" />
                             </button>
                           )}
+
                           {actions.includes('invoice') && (
                             <button
                               onClick={(e) => {

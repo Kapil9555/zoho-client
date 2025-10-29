@@ -9,7 +9,7 @@ export const zohoApi = createApi({
     baseUrl: `${API_BASE}/`,
     credentials: 'include',
   }),
-  // ⬇️ Add two tag types for controller-backed endpoints
+  // Add two tag types for controller-backed endpoints
   tagTypes: [
     'ZohoInvoices', 'ZohoInvoice',
     'ZohoPOs', 'ZohoPO',
@@ -18,7 +18,9 @@ export const zohoApi = createApi({
     'CRMInvoices', 'CRMPurchaseOrders',
     'OnlyInvoices',
     'SalesAuth',
-    'SalesMembers'
+    'SalesMembers',
+    'ManualProfit',
+    'ZohoBackfill'
   ],
   endpoints: (builder) => ({
 
@@ -113,7 +115,7 @@ export const zohoApi = createApi({
     // GET /api/invoices?search=&page=&limit=&personName=&from=&to=&month=
     getCrmInvoices: builder.query({
       query: ({ page = 1, limit = 25, ...rest } = {}) => ({
-        url: `invoices`,
+        url: `dashboard`,
         params: { page, limit, ...rest },
       }),
       // Normalize to a predictable shape for components
@@ -172,6 +174,28 @@ export const zohoApi = createApi({
       ],
       keepUnusedDataFor: 60,
     }),
+
+    getCrmPaidPurchaseOrders: builder.query({
+      query: ({ page = 1, limit = 25, from, to, search, personName } = {}) => ({
+        url: `purchaseorders/paid`,
+        params: { page, limit, from, to, search, personName },
+      }),
+      transformResponse: (res) => ({
+        list: res?.items || [],
+        meta: {
+          page: res?.page ?? 1,
+          limit: res?.limit ?? 25,
+          total: res?.total ?? 0,
+          pages: res?.pages ?? 0,
+        },
+        raw: res,
+      }),
+      providesTags: (result, error, args) => [
+        { type: 'CRMPurchaseOrders', id: JSON.stringify(args || {}) },
+      ],
+      keepUnusedDataFor: 60,
+    }),
+
 
 
     getSalesMembers: builder.query({
@@ -238,6 +262,12 @@ export const zohoApi = createApi({
       invalidatesTags: ['SalesAuth'],
     }),
 
+    getAzureLogoutUrl: builder.query({
+      query: () => '/auth/logout-url',
+      transformResponse: (res) => res?.url || null,
+      providesTags: ['SalesAuth'],
+    }),
+
     getSalesMe: builder.query({
       query: () => '/sales/auth/me',
       transformResponse: (res) => res?.user || null,
@@ -246,9 +276,127 @@ export const zohoApi = createApi({
     }),
 
 
+    // manual profit calclate
+    upsertManualProfit: builder.mutation({
+      query: (body) => ({ url: '/manual-profits', method: 'POST', body }),
+      invalidatesTags: ['CRMInvoices'],
+    }),
+
+
+
+    // GET /manual-profits?month=&pi=
+    getManualProfits: builder.query({
+      query: (params = {}) => ({ url: '/manual-profits', params }),
+      providesTags: (result) =>
+        Array.isArray(result?.items)
+          ? [
+            ...result.items.map((d) => ({ type: 'ManualProfit', id: d?._id })),
+            { type: 'ManualProfit', id: 'LIST' },
+          ]
+          : [{ type: 'ManualProfit', id: 'LIST' }],
+    }),
+
+    // GET /manual-profits/:id
+    getManualProfitById: builder.query({
+      query: (id) => `/manual-profits/${id}`,
+      providesTags: (result, _err, id) => [
+        { type: 'ManualProfit', id },
+        ...(result?.data?._id
+          ? [{ type: 'ManualProfit', id: result.data._id }]
+          : []),
+      ],
+    }),
+
+    // GET /manual-profits/by-pi-month/:pi/:month
+    getManualProfitByPiMonth: builder.query({
+      query: ({ pi, month }) =>
+        `/manual-profits/by-pi-month/${encodeURIComponent(pi)}/${encodeURIComponent(month)}`,
+      providesTags: (result, _e, { pi, month }) => [
+        { type: 'ManualProfit', id: `${pi}::${month}` },
+        ...(result?.data?._id
+          ? [{ type: 'ManualProfit', id: result.data._id }]
+          : []),
+        { type: 'ManualProfit', id: 'LIST' },
+      ],
+    }),
+
+    // GET /manual-profits/by-pi/:pi
+    getManualProfitsByPi: builder.query({
+      query: (pi) => `/manual-profits/by-pi/${encodeURIComponent(pi)}`,
+      providesTags: (result, _e, pi) =>
+        Array.isArray(result?.items)
+          ? [
+            ...result.items.map((d) => ({ type: 'ManualProfit', id: d?._id })),
+            { type: 'ManualProfit', id: `BYPI::${pi}` },
+            { type: 'ManualProfit', id: 'LIST' },
+          ]
+          : [
+            { type: 'ManualProfit', id: `BYPI::${pi}` },
+            { type: 'ManualProfit', id: 'LIST' },
+          ],
+    }),
+
+    getManualProfitByPiMonth: builder.query({
+      query: ({ pi, month }) =>
+        `/manual-profits/by-pi-month?pi=${encodeURIComponent(pi)}&month=${encodeURIComponent(month)}`,
+      providesTags: (result, _e, { pi, month }) =>
+        result?.data?._id
+          ? [
+            { type: 'ManualProfit', id: result.data._id },
+            { type: 'ManualProfit', id: `BYPI-MONTH::${pi}::${month}` },
+          ]
+          : [
+            { type: 'ManualProfit', id: `BYPI-MONTH::${pi}::${month}` },
+          ],
+    }),
+
+
+    getInvoicesByPoPiLite: builder.query({
+      // params: { poId?, piId? }
+      query: (params = {}) => ({
+        url: 'invoices/by-po-pi-lite',
+        params,
+      }),
+      // Normalize to a predictable shape
+      transformResponse: (res) => ({
+        list: Array.isArray(res?.data) ? res.data : [],
+        count: res?.count ?? 0,
+        raw: res,
+      }),
+      providesTags: (_result, _error, args) => [
+        { type: 'OnlyInvoices', id: `BY_PO_PI_LITE::${args?.poId || ''}::${args?.piId || ''}` },
+      ],
+      keepUnusedDataFor: 30,
+    }),
+
+
+
+
+    // Trigger manual hard refetch (optionally scoped by range)
+    triggerZohoBackfill: builder.mutation({
+      // accepts: {}, { preset: 'last-two-months' }, { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }, { days: 60 }, etc.
+      query: (params) => ({
+        url: 'admin/zoho/backfill-all',
+        method: 'POST',
+        // if params is provided, send as query string; if not, triggers full backfill
+        ...(params ? { params } : {}),
+      }),
+      invalidatesTags: ['ZohoBackfill'],
+    }),
+
+    // Live backfill status (no change)
+    getZohoBackfillStatus: builder.query({
+      query: () => 'admin/zoho/backfill-status',
+      providesTags: ['ZohoBackfill'],
+      keepUnusedDataFor: 5,
+    }),
+
+
 
   }),
 });
+
+
 
 export const {
   // existing exports...
@@ -268,6 +416,7 @@ export const {
   useLazyGetCrmInvoicesQuery,
   useGetCrmPurchaseOrdersQuery,
   useLazyGetCrmPurchaseOrdersQuery,
+  useGetCrmPaidPurchaseOrdersQuery,
   useGetOnlyPiSummaryQuery,
 
 
@@ -283,6 +432,21 @@ export const {
   useLoginSalesMutation,
   useLogoutSalesMutation,
   useGetSalesMeQuery,
+  useGetAzureLogoutUrlQuery,
+
+
+  // manual profit hooks
+  useUpsertManualProfitMutation,
+  useGetManualProfitsByPiQuery,
+
+
+  useTriggerZohoBackfillMutation,
+  useGetZohoBackfillStatusQuery,
+  useLazyGetZohoBackfillStatusQuery,
+
+  useGetManualProfitByPiMonthQuery,
+
+   useGetInvoicesByPoPiLiteQuery,
 
 
 } = zohoApi;

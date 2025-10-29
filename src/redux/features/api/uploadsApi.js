@@ -21,6 +21,8 @@ export const uploadsApi = createApi({
         body: { fileName, fileType },
       }),
     }),
+
+    
   }),
 });
 

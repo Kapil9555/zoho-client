@@ -1,13 +1,25 @@
-"use client";
+// app/login/page.tsx (or .jsx)
+'use client';
 
-import React, { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useLoginSalesMutation } from "@/redux/features/api/zohoApi";
-// 👇 import your hooks from the zohoApi slice
+import { showError,showSuccess } from "@/utils/customAlert";
+import { AZURE_LOGIN_REDIRECT_URI } from "@/constant";
 
-export default function LoginPage() {
+
+function Spinner() {
+  return (
+    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+  );
+}
+
+function LoginFormInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,6 +27,30 @@ export default function LoginPage() {
   const [clientError, setClientError] = useState(null);
 
   const [loginSales, { isLoading }] = useLoginSalesMutation();
+
+  // Azure OIDC: handle ?error=...
+  useEffect(() => {
+    const error = searchParams?.get("error");
+    if (!error) return;
+
+    switch (error) {
+      case "account_not_exist":
+        showError("Error", "Account doesn't exist! Please contact admin.");
+        break;
+      case "account_inactive":
+        showError("Error", "Your account is inactive. Contact admin.");
+        break;
+      default:
+        showError("Error", "Login failed. Please try again.");
+    }
+
+    // Clear error from URL (no reload)
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("error");
+    const pathname = window.location.pathname;
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [searchParams, router]);
 
   const validate = () => {
     if (!email.trim()) return "Please enter your email";
@@ -36,15 +72,15 @@ export default function LoginPage() {
     }
 
     try {
-      // Your backend accepts { identifier, password } or { email, password }
       await loginSales({ identifier: email.trim(), password }).unwrap();
-
-      // Optionally you can refetch profile in parallel in a layout using useGetSalesMeQuery
       router.push("/dashboard");
     } catch (err) {
-      // RTKQ error shape: err?.data?.message or fallback
       setClientError(err?.data?.message || "Login failed. Please try again.");
     }
+  };
+
+  const handleMicrosoftLogin = () => {
+     window.location.href = AZURE_LOGIN_REDIRECT_URI
   };
 
   return (
@@ -71,7 +107,7 @@ export default function LoginPage() {
             </p>
 
             <ul className="mt-10 grid grid-cols-2 gap-3 text-left text-sm">
-              {["Bank‑grade security", "Real‑time analytics", "GST‑ready invoicing", "Team roles & permissions"].map((t) => (
+              {["Bank-grade security", "Real-time analytics", "GST-ready invoicing", "Team roles & permissions"].map((t) => (
                 <li key={t} className="flex items-center gap-2">
                   <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-400/20 text-emerald-300 text-xs">✓</span>
                   <span className="text-white/80">{t}</span>
@@ -87,17 +123,43 @@ export default function LoginPage() {
           <div className="rounded-3xl bg-white shadow-xl ring-1 ring-black/5 p-8 sm:p-10">
             <div className="mb-8">
               <h2 className="text-2xl font-semibold text-slate-900">Sign in</h2>
-              <p className="mt-1 text-sm text-slate-500">Login with your email and password.</p>
+              <p className="mt-1 text-sm text-slate-500">Login with your email/password or use your Microsoft account.</p>
             </div>
 
-            {(clientError) && (
+            {clientError && (
               <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {clientError}
               </div>
             )}
 
+            {/* Microsoft sign-in */}
+            <button
+              type="button"
+              onClick={handleMicrosoftLogin}
+              className="mb-4 cursor-pointer inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-800 hover:bg-slate-50"
+              aria-label="Sign in with Microsoft"
+            >
+              <svg width="18" height="18" viewBox="0 0 23 23" aria-hidden="true">
+                <rect width="10" height="10" x="1" y="1" fill="#F35325" />
+                <rect width="10" height="10" x="12" y="1" fill="#81BC06" />
+                <rect width="10" height="10" x="1" y="12" fill="#05A6F0" />
+                <rect width="10" height="10" x="12" y="12" fill="#FFBA08" />
+              </svg>
+              Sign in with Microsoft
+            </button>
+
+            {/* Divider */}
+            <div className="relative my-5">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-white px-3 text-xs uppercase tracking-wide text-slate-400">or</span>
+              </div>
+            </div>
+
+            {/* Email/Password form */}
             <form onSubmit={onSubmit} className="space-y-4">
-              {/* Email */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700" htmlFor="email">Email</label>
                 <input
@@ -112,11 +174,9 @@ export default function LoginPage() {
                 />
               </div>
 
-              {/* Password */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-slate-700" htmlFor="password">Password</label>
-                  {/* <Link href="/forgot-password" className="text-sm text-indigo-600 hover:underline">Forgot?</Link> */}
                 </div>
                 <div className="relative">
                   <input
@@ -152,7 +212,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Remember me */}
               <div className="flex items-center justify-between">
                 <label className="inline-flex items-center gap-2 text-sm text-slate-600">
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
@@ -161,17 +220,16 @@ export default function LoginPage() {
                 <span className="text-xs text-slate-400">v1.0</span>
               </div>
 
-              {/* Submit */}
               <button
                 type="submit"
                 disabled={isLoading}
                 className="group cursor-pointer relative inline-flex w-full items-center justify-center gap-2 rounded-xl 
-                           bg-[#3E57A7] px-4 py-2.5 text-white shadow-lg 
-                           transition hover:bg-[#324A91] focus:outline-none disabled:opacity-70"
+                  bg-[#3E57A7] px-4 py-2.5 text-white shadow-lg 
+                  transition hover:bg-[#324A91] focus:outline-none disabled:opacity-70"
               >
                 <span className="absolute inset-0 -z-10 rounded-xl 
-                                bg-gradient-to-r from-[#3E57A7] to-[#2E4788] 
-                                opacity-0 blur transition group-hover:opacity-40" />
+                  bg-gradient-to-r from-[#3E57A7] to-[#2E4788] 
+                  opacity-0 blur transition group-hover:opacity-40" />
                 {isLoading ? (
                   <span className="inline-flex items-center gap-2">
                     <Spinner /> Signing in...
@@ -196,11 +254,10 @@ export default function LoginPage() {
   );
 }
 
-function Spinner() {
+export default function LoginPage() {
   return (
-    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-    </svg>
+    <Suspense fallback={<div className="min-h-screen" />}>
+      <LoginFormInner />
+    </Suspense>
   );
 }

@@ -6,21 +6,7 @@ import toast from 'react-hot-toast'
 import { useGetAzureUploadUrlMutation } from '@/redux/features/api/uploadsApi'
 
 /* Shared Input Styles */
-const inputClass = `
-  w-full
-  bg-white
-  text-sm
-  text-gray-800
-  placeholder-gray-400
-  border border-gray-300
-  rounded-md
-  px-4
-  py-2.5
-  shadow-[0_1px_3px_rgba(0,0,0,0.1)]
-  focus:outline-none
-  focus:ring-2
-  focus:ring-blue-500
-  transition-all
+const inputClass = `w-full bg-white text-sm text-gray-800 placeholder-gray-400 border border-gray-300 rounded-md px-4 py-1 focus:outline-none focus:ring-2 focus:ring-blue-900 transition-all
 `
 const labelClass = 'text-sm font-medium text-gray-700'
 
@@ -59,7 +45,7 @@ export function TextInput({
           placeholder={placeholder}
           disabled={disabled}
           required={required}
-          className={`${inputClass} pr-10 ${className}`}
+          className={`${inputClass} pr-10 ${className} h-12`}
         />
         {isPassword ? (
           <button
@@ -234,85 +220,209 @@ export function ImageInput({
 }
 
 /* Image Upload Input (Azure Blob) */
-export function ImageUploadInput({
+// export function ImageUploadInput({
+//   label,
+//   name,
+//   onUploadComplete,
+//   defaultImages = [],
+//   className = '',
+//   required = false,
+//   onlySvg = false, 
+//   previews,
+//   setPreviews
+// }) {
+//   const [getAzureUploadUrl] = useGetAzureUploadUrlMutation();
+
+//   useEffect(() => {
+//     if (defaultImages?.length > 0) {
+//       setPreviews(defaultImages.map((url) => ({ url })));
+//     }
+//   }, [defaultImages]);
+
+//   const handleFileChange = async (e) => {
+//     const files = Array.from(e.target.files);
+//     const uploadedUrls = [];
+
+//     const maxImages = 5;
+//     const currentCount = previews.length;
+
+//     if (currentCount + files.length > maxImages) {
+//       toast.error(`Maximum ${maxImages} images allowed.`);
+//       e.target.value = null;
+//       return;
+//     }
+
+//     for (let file of files) {
+//       if (onlySvg && file.type !== 'image/svg+xml') {
+//         toast.error('Only SVG files are allowed.');
+//         continue;
+//       }
+
+//       if (!file.type.startsWith('image/')) continue;
+
+//       try {
+//         const { data, error } = await getAzureUploadUrl({
+//           fileName: file.name,
+//           fileType: file.type,
+//         });
+
+//         if (error || !data?.uploadUrl || !data?.blobUrl) {
+//           toast.error('Failed to get Azure upload URL');
+//           continue;
+//         }
+
+//         console.log("datadatadata",data)
+
+//         await fetch(data.uploadUrl, {
+//           method: 'PUT',
+//           headers: {
+//             'x-ms-blob-type': 'BlockBlob',
+//             'Content-Type': file.type,
+//           },
+//           body: file,
+//         });
+
+//         const newImage = { url: data.blobUrl };
+//         setPreviews((prev) => [...prev, newImage]);
+//         uploadedUrls.push(data.blobUrl);
+//         toast.success('Uploaded successfully');
+//       } catch (err) {
+//         console.error('Azure upload failed:', err);
+//         toast.error('Upload failed');
+//       }
+//     }
+
+//     const allUrls = [...previews.map((p) => p.url), ...uploadedUrls];
+//     onUploadComplete?.(allUrls);
+//   };
+
+
+
+//   return (
+//     <div className="w-full space-y-2">
+//       {label && (
+//         <label htmlFor={name} className={labelClass}>
+//           {label}
+//           {required && <span className="text-red-500 ml-0.5">*</span>}
+//         </label>
+//       )}
+
+//       <input
+//         id={name}
+//         name={name}
+//         type="file"
+//         multiple
+//         required={required}
+//         onChange={handleFileChange}
+//         className={`
+//           ${inputClass}
+//           file:mr-4 file:py-2 file:px-4 
+//           file:rounded-lg file:border-0 
+//           file:text-sm file:font-semibold 
+//           file:bg-blue-50 file:text-blue-900 
+//           hover:file:bg-blue-100
+//           ${className}
+//         `}
+//       />
+
+   
+//     </div>
+//   );
+// }
+
+/* Any-File Upload Input (Azure Blob) */
+export function ImageUploadInputtt({
   label,
   name,
   onUploadComplete,
-  defaultImages = [],
+  defaultFiles = [],           // initial URLs (images or any file)
   className = '',
   required = false,
-  onlySvg = false, 
+  previews,
+  setPreviews,
+  maxFiles = 20,
+  maxSizeMB = 100,             // allow big files by default; adjust as needed
 }) {
-  const [previews, setPreviews] = useState([]);
   const [getAzureUploadUrl] = useGetAzureUploadUrlMutation();
+  const maxBytes = maxSizeMB * 1024 * 1024;
 
+  // seed previews from defaults
   useEffect(() => {
-    if (defaultImages?.length > 0) {
-      setPreviews(defaultImages.map((url) => ({ url })));
+    if (defaultFiles?.length > 0) {
+      setPreviews(
+        defaultFiles.map((url) => ({
+          url,
+          name: url.split('/').pop() || 'file',
+          type: guessTypeFromUrl(url),
+          isImage: /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(url.split('?')[0]),
+        }))
+      );
     }
-  }, [defaultImages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultFiles]);
 
   const handleFileChange = async (e) => {
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files || []);
     const uploadedUrls = [];
+    const currentCount = previews?.length || 0;
 
-    const maxImages = 5;
-    const currentCount = previews.length;
-
-    if (currentCount + files.length > maxImages) {
-      toast.error(`Maximum ${maxImages} images allowed.`);
+    if (currentCount + files.length > maxFiles) {
+      toast.error(`Maximum ${maxFiles} files allowed.`);
       e.target.value = null;
       return;
     }
 
-    for (let file of files) {
-      if (onlySvg && file.type !== 'image/svg+xml') {
-        toast.error('Only SVG files are allowed.');
+    for (const file of files) {
+      // size guard only (no type restriction)
+      if (file.size > maxBytes) {
+        toast.error(`${file.name}: exceeds ${maxSizeMB} MB`);
         continue;
       }
 
-      if (!file.type.startsWith('image/')) continue;
-
       try {
+        const contentType = file.type || 'application/octet-stream';
         const { data, error } = await getAzureUploadUrl({
           fileName: file.name,
-          fileType: file.type,
+          fileType: contentType,
         });
 
         if (error || !data?.uploadUrl || !data?.blobUrl) {
-          toast.error('Failed to get Azure upload URL');
+          toast.error(`Failed to get Azure upload URL for ${file.name}`);
           continue;
         }
-
-        console.log("datadatadata",data)
 
         await fetch(data.uploadUrl, {
           method: 'PUT',
           headers: {
             'x-ms-blob-type': 'BlockBlob',
-            'Content-Type': file.type,
+            'Content-Type': contentType,
           },
           body: file,
         });
 
-        const newImage = { url: data.blobUrl };
-        setPreviews((prev) => [...prev, newImage]);
+        const isImage = (contentType.startsWith('image/'));
+        const entry = {
+          url: data.blobUrl,
+          name: file.name,
+          type: contentType,
+          size: file.size,
+          isImage,
+        };
+
+        setPreviews((prev = []) => [...prev, entry]);
         uploadedUrls.push(data.blobUrl);
-        toast.success('Uploaded successfully');
+        toast.success(`${file.name}: uploaded`);
       } catch (err) {
         console.error('Azure upload failed:', err);
-        toast.error('Upload failed');
+        toast.error(`${file.name}: upload failed`);
       }
     }
 
-    const allUrls = [...previews.map((p) => p.url), ...uploadedUrls];
+    const allUrls = [ ...(previews || []).map((p) => p.url), ...uploadedUrls ];
     onUploadComplete?.(allUrls);
-  };
 
-  const handleRemove = (urlToRemove) => {
-    const updated = previews.filter((img) => img.url !== urlToRemove);
-    setPreviews(updated);
-    onUploadComplete?.(updated.map((img) => img.url));
+    // allow selecting the same file again
+    e.target.value = null;
   };
 
   return (
@@ -328,56 +438,163 @@ export function ImageUploadInput({
         id={name}
         name={name}
         type="file"
-        accept={onlySvg ? 'image/svg+xml' : 'image/*'} // ✅ SVG-only when needed
         multiple
         required={required}
+        // accept ANY file type:
+        accept="*/*"
         onChange={handleFileChange}
         className={`
           ${inputClass}
           file:mr-4 file:py-2 file:px-4 
           file:rounded-lg file:border-0 
           file:text-sm file:font-semibold 
-          file:bg-blue-50 file:text-blue-700 
+          file:bg-blue-50 file:text-blue-900 
           hover:file:bg-blue-100
           ${className}
         `}
       />
-
-      {previews.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-3">
-          {previews.map((img, idx) => (
-            <div
-              key={idx}
-              className="relative w-28 h-20 overflow-hidden rounded-xl border shadow-sm"
-            >
-              <Image
-                src={img.url}
-                alt={`Preview ${idx}`}
-                width={112}
-                height={80}
-                className="object-cover w-full h-full"
-              />
-              <button
-                type="button"
-                onClick={() => handleRemove(img.url)}
-                className="absolute top-1 right-1 bg-white/80 text-red-600 hover:text-white hover:bg-red-600 rounded-full w-6 h-6 flex items-center justify-center shadow transition duration-150"
-                title="Remove"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
+
+export function ImageUploadInput({
+  label,
+  name,
+  onUploadComplete,
+  defaultFiles = [],
+  className = '',
+  required = false,
+  previews,
+  setPreviews,
+  maxFiles = 20,
+  maxSizeMB = 100,
+}) {
+  const [getAzureUploadUrl] = useGetAzureUploadUrlMutation();
+  const maxBytes = maxSizeMB * 1024 * 1024;
+
+  // Seed previews once from defaults
+  useEffect(() => {
+    if (defaultFiles?.length > 0) {
+      setPreviews(
+        defaultFiles.map((url) => ({
+          url,
+          name: url.split('/').pop() || 'file',
+          type: guessTypeFromUrl(url),
+          isImage: /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(url.split('?')[0]),
+        }))
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultFiles]);
+
+  const handleFileChange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    const uploadedUrls = [];
+    const currentCount = previews?.length || 0;
+
+    if (currentCount + files.length > maxFiles) {
+      toast.error(`Maximum ${maxFiles} files allowed.`);
+      e.target.value = null;
+      return;
+    }
+
+    for (const file of files) {
+      if (file.size > maxBytes) {
+        toast.error(`${file.name}: exceeds ${maxSizeMB} MB`);
+        continue;
+      }
+
+      try {
+        const contentType = file.type || 'application/octet-stream';
+        const { data, error } = await getAzureUploadUrl({
+          fileName: file.name,
+          fileType: contentType,
+        });
+
+        if (error || !data?.uploadUrl || !data?.blobUrl) {
+          toast.error(`Failed to get Azure upload URL for ${file.name}`);
+          continue;
+        }
+
+        await fetch(data.uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'x-ms-blob-type': 'BlockBlob',
+            'Content-Type': contentType,
+          },
+          body: file,
+        });
+
+        const entry = {
+          url: data.blobUrl,
+          name: file.name,
+          type: contentType,
+          size: file.size,
+          isImage: contentType.startsWith('image/'),
+        };
+
+        // Show this batch in the UI immediately
+        setPreviews((prev = []) => [...prev, entry]);
+
+        uploadedUrls.push(data.blobUrl);
+        toast.success(`${file.name}: uploaded`);
+      } catch (err) {
+        console.error('Azure upload failed:', err);
+        toast.error(`${file.name}: upload failed`);
+      }
+    }
+
+    // ✅ Send ONLY the newly uploaded URLs to parent
+    onUploadComplete?.(uploadedUrls);
+
+    // ✅ Clear local state so next time starts fresh
+    setPreviews([]);
+    e.target.value = null; // allow re-selecting same file again
+  };
+
+  return (
+    <div className="w-full space-y-2">
+      {label && (
+        <label htmlFor={name} className={labelClass}>
+          {label}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
+        </label>
+      )}
+
+      <input
+        id={name}
+        name={name}
+        type="file"
+        multiple
+        required={required}
+        accept="*/*"
+        onChange={handleFileChange}
+        className={`
+          ${inputClass}
+          file:mr-4 file:py-2 file:px-4 
+          file:rounded-lg file:border-0 
+          file:text-sm file:font-semibold 
+          file:bg-blue-50 file:text-blue-900 
+          hover:file:bg-blue-100
+          ${className}
+        `}
+      />
+    </div>
+  );
+}
+
+
+/* helpers */
+function guessTypeFromUrl(url) {
+  const u = (url || '').split('?')[0].toLowerCase();
+  if (u.match(/\.(png|jpg|jpeg|gif|webp|avif|svg)$/)) return 'image/*';
+  if (u.endsWith('.pdf')) return 'application/pdf';
+  if (u.match(/\.(docx?|rtf|odt)$/)) return 'application/msword';
+  if (u.match(/\.(xlsx?|ods|csv)$/)) return 'application/vnd.ms-excel';
+  if (u.match(/\.(pptx?|odp)$/)) return 'application/vnd.ms-powerpoint';
+  if (u.endsWith('.txt')) return 'text/plain';
+  if (u.match(/\.(zip|rar|7z|tar|gz)$/)) return 'application/zip';
+  if (u.match(/\.(mp4|mov|mkv|webm|avi|mp3|wav|flac)$/)) return 'media/*';
+  return 'application/octet-stream';
+}
+

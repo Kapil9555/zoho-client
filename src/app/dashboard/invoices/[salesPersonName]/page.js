@@ -1,5 +1,6 @@
 'use client';
 
+
 import Loader from '@/components/custom/ui/Loader';
 import PopoverDropdown from '@/components/custom/ui/PopoverDropdown';
 import { useGetOnlyInvoicesQuery, useGetSalesMembersQuery, useGetSalesMeQuery } from '@/redux/features/api/zohoApi';
@@ -9,7 +10,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import CustomTable from '../../components/custom/CustomTable';
 import InvoiceViewDrawer from './InvoiceViewDrawer';
 
+
 // simple debounce hook
+
+
 function useDebouncedValue(value, delay = 400) {
   const [v, setV] = useState(value);
   useEffect(() => {
@@ -60,7 +64,9 @@ export default function InvoicesPage() {
 
   // month filter like dashboard -> send `${month}-01`
   const now = new Date();
+
   const initMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
   const [month, setMonth] = useState(initMonth);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -73,6 +79,7 @@ export default function InvoicesPage() {
 
   /* ===== Sales team dropdown (same as Purchase Orders) ===== */
   const TEAM_LIMIT = 10000;
+
   const { data: teamData, isLoading: teamLoading, isFetching: teamFetching } = useGetSalesMembersQuery(
     { page: 1, limit: TEAM_LIMIT },
     { refetchOnMountOrArgChange: true }
@@ -87,10 +94,13 @@ export default function InvoicesPage() {
     [];
 
   // salesperson selection: store ID; compute name; "all" = no filter
+
   const [personId, setPersonId] = useState('all');
 
   // only apply URL param once (don’t override user changes later)
+
   const didApplyUrlPerson = useRef(false);
+
   useEffect(() => {
     if (didApplyUrlPerson.current) return;
     if (!teamRows?.length) return;
@@ -109,6 +119,7 @@ export default function InvoicesPage() {
   }, [teamRows, salesPersonParam]);
 
   // keep personId valid if team changes (but don’t fight user)
+
   useEffect(() => {
     if (!teamRows.length || personId === 'all') return;
     if (!teamRows.some((m) => m._id === personId)) {
@@ -121,7 +132,9 @@ export default function InvoicesPage() {
     return teamRows.find((p) => p._id === personId)?.name ?? '';
   }, [personId, teamRows]);
 
+  
   /* ===== Invoices query (include personName only when not "All") ===== */
+
   const { data, isLoading, isFetching, error } = useGetOnlyInvoicesQuery({
     page: currentPage,
     limit: itemsPerPage,
@@ -132,6 +145,9 @@ export default function InvoicesPage() {
 
   // map from API (primary: data.raw.*, fallback: top-level/items)
   const invoices = data?.raw?.data ?? data?.items ?? [];
+
+  // console.log("invoices check",invoices)
+
   const totalKnown = data?.raw?.total ?? data?.total ?? invoices.length;
   const totalPages =
     data?.raw?.pages ?? data?.pages ?? Math.max(1, Math.ceil(totalKnown / itemsPerPage));
@@ -168,20 +184,7 @@ export default function InvoicesPage() {
       key: 'invoice_number',
       label: 'Invoice #',
       className: 'whitespace-nowrap',
-      render: (row) =>
-        row.invoice_url ? (
-          <a
-            href={row.invoice_url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[#3E57A7] hover:underline font-medium"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {row.invoice_number || '-'}
-          </a>
-        ) : (
-          <span className="font-medium text-gray-900">{row.invoice_number || '-'}</span>
-        ),
+      render: (row) =><span className="font-medium text-gray-900">{row.invoice_number || '-'}</span>
     },
     { key: 'date', label: 'Date', render: (row) => <span className="text-gray-700">{fmtDate(row.date)}</span> },
     { key: 'customer_name', label: 'Customer', render: (row) => row.customer_name || '-' },
@@ -196,10 +199,13 @@ export default function InvoicesPage() {
     // { key: 'status', label: 'Status', render: (row) => <StatusPill status={row.status} /> },
   ];
 
+
   // reset to page 1 on search/month/person change
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearch, month, personId]);
+
+
 
   return (
     <div className="p-6">
@@ -290,7 +296,9 @@ export default function InvoicesPage() {
           setCurrentPage(1);
         }}
         onRowClick={(row) => setViewInvoiceId(row._id || row.invoice_id)}
+        
         onViewClick={(row) => setViewInvoiceId(row._id || row.invoice_id)}
+
         emptyMessage={error ? 'Failed to load invoices' : 'No invoices found for this selection.'}
       />
 

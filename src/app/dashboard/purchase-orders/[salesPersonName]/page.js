@@ -3,10 +3,13 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import Loader from '@/components/custom/ui/Loader';
 import PopoverDropdown from '@/components/custom/ui/PopoverDropdown';
-import { Search, SortDesc, ExternalLink } from 'lucide-react';
+import { Search, SortDesc, ExternalLink, Filter } from 'lucide-react';
 import { useGetCrmPurchaseOrdersQuery, useGetSalesMembersQuery, useGetSalesMeQuery } from '@/redux/features/api/zohoApi';
 import CustomTable from '../../components/custom/CustomTable';
-import PurchaseOrderViewDrawer from './PurchaseOrderViewDrawer';
+import { useParams, useRouter } from 'next/navigation';
+import PurchaseOrderViewDrawer from '../PurchaseOrderViewDrawer';
+import { useGetPoPaymentDetailsQuery } from '@/redux/features/api/poPaymentApi';
+import PoPayDateRangeFilter from '../../components/PoPayDateRangeFilter';
 
 const statusColor = {
   open: 'bg-blue-100 text-blue-700',
@@ -17,7 +20,19 @@ const statusColor = {
   draft: 'bg-gray-100 text-gray-600',
 };
 
+// small debounce helper
+function useDebounced(value, delay = 400) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return v;
+}
+
 export default function PurchaseOrdersPage() {
+  const router = useRouter();
+
   // default month = current month (YYYY-MM)
   const now = new Date();
   const initMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -27,6 +42,13 @@ export default function PurchaseOrdersPage() {
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState('Newest');
+  const [monthN, setMonthN] = useState({ from: '', to: '' });
+
+  // Payment filter: 'all' | 'unpaid' | 'overdue30'
+  const [paymentFilter, setPaymentFilter] = useState('all');
+
+  // debounced search
+  const debouncedSearch = useDebounced(searchQuery, 400);
 
   // Drawer state
   const [viewPOId, setViewPOId] = useState(null);
@@ -34,8 +56,12 @@ export default function PurchaseOrdersPage() {
   const { data: me } = useGetSalesMeQuery();
   const isAdmin = !!me?.isAdmin || me?.role === 'admin';
 
+  const params = useParams();
+  const salesPersonParam = isAdmin ? decodeURIComponent(params?.salesPersonName)?.trim() : me?.name;
+
   /* ===== Sales team (for dropdown) ===== */
   const TEAM_LIMIT = 10000;
+
   const { data: teamData, isLoading: teamLoading, isFetching: teamFetching } = useGetSalesMembersQuery(
     { page: 1, limit: TEAM_LIMIT },
     { refetchOnMountOrArgChange: true }
@@ -49,7 +75,6 @@ export default function PurchaseOrdersPage() {
     teamData?.members ||
     [];
 
-  // salesperson selection (id) + computed name (same as dashboard)
   const [personId, setPersonId] = useState('all');
 
   // Helper: match logged-in user to a team row
@@ -74,9 +99,7 @@ export default function PurchaseOrdersPage() {
   // Role-aware selection: admins free; sales locked to self
   useEffect(() => {
     if (!teamRows.length) return;
-
     if (isAdmin) return; // admins keep manual control (including "All")
-
     const mine = findMyTeamRow();
     if (mine && personId !== mine._id) {
       setPersonId(mine._id);
@@ -88,18 +111,45 @@ export default function PurchaseOrdersPage() {
     return teamRows.find((p) => p._id === personId)?.name ?? '';
   }, [personId, teamRows]);
 
-  // Controller-backed query (server paginated + month filter like dashboard)
+  // Map UI sort to API sort
+  const apiSort = useMemo(() => {
+    switch (sortOption) {
+      case 'Oldest': return 'date:asc';
+      case 'Newest':
+      default: return 'date:desc';
+    }
+  }, [sortOption]);
+
   const poArgs = useMemo(() => {
     const q = {
       page: currentPage,
       limit: itemsPerPage,
-      date: `${month}-01`,
+      sort: apiSort,
     };
-    if (personName) q.personName = personName; // only send when specific salesperson selected
+
+    // If user selected a custom range, use it
+    if (monthN.from && monthN.to) {
+      q.from = monthN.from;
+      q.to = monthN.to;
+    } else {
+      // fallback to default month
+      q.date = `${month}-01`;
+    }
+
+    if (personName) q.personName = personName;
+    if (debouncedSearch) q.search = debouncedSearch;
+
+    // Optional: forward payment filter to server if it ever supports it
+    // if (paymentFilter !== 'all') q.payment = paymentFilter;
+
     return q;
-  }, [currentPage, itemsPerPage, month, personName]);
+  }, [currentPage, itemsPerPage, month, monthN, personName, debouncedSearch, apiSort]);
+
 
   const { data, isLoading, isFetching, error } = useGetCrmPurchaseOrdersQuery(poArgs);
+
+  // ALL payment details
+  const { data: payData, isLoading: payLoad, isFetching: payFetch, error: payError } = useGetPoPaymentDetailsQuery();
 
   // Normalized shape from transformResponse in zohoApi
   const purchaseOrders = data?.list ?? [];
@@ -121,27 +171,86 @@ export default function PurchaseOrdersPage() {
 
   const cf = (row, key) => row?.custom_field_hash?.[key] ?? row?.[key] ?? '-';
 
-  // Simple client search (vendor, PO #, reference)
-  const filtered = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return purchaseOrders;
-    return purchaseOrders.filter((po) => {
-      const vendor = (po?.vendor_name || '').toLowerCase();
-      const poNo = (po?.purchaseorder_number || '').toLowerCase();
-      const ref = (po?.reference_number || cf(po, 'cf_proforma_invoice_number') || '').toLowerCase();
-      return vendor.includes(q) || poNo.includes(q) || ref.includes(q);
-    });
-  }, [purchaseOrders, searchQuery]);
+  useEffect(() => {
 
-  const sortedRows = useMemo(() => {
-    const arr = [...filtered];
-    arr.sort((a, b) => {
-      const da = new Date(a.date);
-      const db = new Date(b.date);
-      return sortOption === 'Newest' ? db - da : da - db;
-    });
-    return arr;
-  }, [filtered, sortOption]);
+    if (salesPersonParam && salesPersonParam !== 'All') {
+      // setViewPOId(decodeURIComponent(salesPersonParam).trim());
+    }
+
+  }, [salesPersonParam]);
+
+  // Reset custom date range whenever user changes month, person, or search
+  useEffect(() => {
+    setMonthN({ from: '', to: '' });
+    setCurrentPage(1); // optional: reset page
+  }, [month, personId, debouncedSearch]);
+
+  // Use server rows directly
+  const rows = purchaseOrders;
+
+  // Build a map from payment details by purchaseOrderId for quick lookups
+  // NOTE: per your note, payData contains ONLY paid POs => missing id => unpaid
+  const payMap = useMemo(() => {
+    const m = new Map();
+    if (Array.isArray(payData)) {
+      for (const d of payData) {
+        if (d?.purchaseOrderId) m.set(String(d.purchaseOrderId), d);
+      }
+    }
+    return m;
+  }, [payData]);
+
+
+  // console.log("pay map",payMap)
+
+
+
+  // Utilities for payment-based filtering
+  const isUnpaid = useCallback(
+    (row) => !payMap.has(String(row.purchaseorder_id)),
+    [payMap]
+  );
+
+
+
+  const isOlderThanDays = (row, days) => {
+    const poDate = new Date(row.date);
+    if (Number.isNaN(poDate.getTime())) return false;
+
+    console.log("daysdays",days)
+    console.log("poDate poDate",poDate)
+
+
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+    const ageDays = Math.floor((Date.now() - poDate.getTime()) / MS_PER_DAY);
+
+
+    // console.log("ageDaysageDays",ageDays)
+    // console.log("MS_PER_DAY",MS_PER_DAY)
+
+    return ageDays >= days;
+
+    
+  };
+
+
+
+
+  // Apply client-side payment filters
+  const displayRows = useMemo(() => {
+    switch (paymentFilter) {
+      case 'unpaid':
+        return rows.filter(isUnpaid);
+      case 'overdue30':
+        return rows.filter((r) => isUnpaid(r) && isOlderThanDays(r, 30));
+      case 'all':
+      default:
+        return rows;
+    }
+  }, [rows, paymentFilter, isUnpaid]);
+
+
 
   const columns = [
     {
@@ -151,43 +260,41 @@ export default function PurchaseOrdersPage() {
       render: (_row, idx) => {
         const page = Number(currentPage) || 1;
         const perPage = Number(itemsPerPage) || 0;
-
-        // if idx isn't passed, fall back to finding it in the current data array
-        const safeIdx =
-          Number.isFinite(idx) ? idx : Math.max(0, sortedRows.indexOf(_row));
-
+        const safeIdx = Number.isFinite(idx) ? idx : Math.max(0, rows.indexOf(_row));
         return (page - 1) * perPage + safeIdx + 1;
       },
     },
     { key: 'purchaseorder_number', label: 'PO #', render: (row) => row.purchaseorder_number },
     { key: 'vendor_name', label: 'Vendor', render: (row) => row.vendor_name || '-' },
     { key: 'date', label: 'Date', render: (row) => fmtDate(row.date) },
-    // {
-    //   key: 'status',
-    //   label: 'Status',
-    //   className: 'whitespace-nowrap',
-    //   render: (row) => (
-    //     <div className="flex items-center gap-2">
-    //       <span className={`px-2 py-0.5 rounded ${statusColor[(row.status || '').toLowerCase()] || 'bg-gray-100 text-gray-700'}`}>
-    //         {row.status}
-    //       </span>
-    //     </div>
-    //   ),
-    // },
     { key: 'sales_person', label: 'Salesperson', render: (row) => cf(row, 'cf_sales_person') },
-    // {
-    //   key: 'reference',
-    //   label: 'Reference',
-    //   render: (row) =>
-    //     cf(row, 'cf_proforma_invoice_number') !== '-'
-    //       ? cf(row, 'cf_proforma_invoice_number')
-    //       : (row.reference_number || '-'),
-    // },
     { key: 'total', label: 'Total', className: 'text-right', render: (row) => fmtMoney(row.total) },
   ];
 
-  // reset to page 1 when month/person changes
-  useEffect(() => { setCurrentPage(1); }, [month, personId]);
+  // reset to page 1 when month/person/search changes
+  useEffect(() => { setCurrentPage(1); }, [month, personId, debouncedSearch]);
+
+  // Badge count: if a payment filter is active, show filtered count; otherwise server total
+  const isPaymentFilterActive = paymentFilter !== 'all';
+
+
+  const badgeCount = isPaymentFilterActive ? displayRows.length : totalKnown;
+
+
+  const onPaymentFilterChange = (label) => {
+    switch (label) {
+      case 'Unpaid':
+        setPaymentFilter('unpaid');
+        break;
+      case 'Unpaid 30+ days':
+        setPaymentFilter('overdue30');
+        break;
+      default:
+        setPaymentFilter('all');
+    }
+  };
+
+  console.log("viewPOId",viewPOId)
 
   return (
     <div className="p-6">
@@ -197,7 +304,7 @@ export default function PurchaseOrdersPage() {
           <h1 className="text-2xl font-bold text-blue-900 flex items-center gap-2">
             Purchase Orders — {personName || 'All'}
             <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-md text-sm">
-              {totalKnown}
+              {badgeCount}
             </span>
           </h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -225,27 +332,41 @@ export default function PurchaseOrdersPage() {
               className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700"
             />
 
-            {/* Salesperson (role-aware) */}
-            {isAdmin && (
-              <select
-                value={personId}
-                onChange={(e) => setPersonId(e.target.value)}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700"
-              >
-                <option value="all">All</option>
-                {teamRows.map((m) => (
-                  <option key={m._id} value={m._id}>{m.name}</option>
-                ))}
-              </select>
-            )}
+            {/* {isAdmin && (
+              <PoPayDateRangeFilter
+                value={{ from: '', to: '' }}
+                onChange={({ from, to }) => {
+                  setMonthN({ from, to });
+                }}
+              />
+            )} */}
+
+
           </div>
 
-          <PopoverDropdown
-            button={<><SortDesc size={16} /> Sort By</>}
-            options={['Newest', 'Oldest']}
-            selected={sortOption}
-            onSelect={(v) => setSortOption(v)}
-          />
+          <div className="flex items-center gap-2">
+            <PopoverDropdown
+              button={<><Filter size={16} /> Payment</>}
+              // options={['All', 'Unpaid', 'Unpaid 30+ days']}
+              options={['All', 'Unpaid']}
+
+              selected={
+                paymentFilter === 'unpaid'
+                  ? 'Unpaid'
+                  : paymentFilter === 'overdue30'
+                    ? 'Unpaid 30+ days'
+                    : 'All'
+              }
+              onSelect={onPaymentFilterChange}
+            />
+
+            <PopoverDropdown
+              button={<><SortDesc size={16} /> Sort By</>}
+              options={['Newest', 'Oldest']}
+              selected={sortOption}
+              onSelect={(v) => setSortOption(v)}
+            />
+          </div>
         </div>
       </div>
 
@@ -253,12 +374,12 @@ export default function PurchaseOrdersPage() {
       <CustomTable
         title=""
         columns={columns}
-        data={sortedRows}
+        data={displayRows}
         actions={['view']}
         actionIcons={{ view: <ExternalLink size={16} /> }}
         currentPage={currentPage}
         totalPages={totalPages}
-        totalItems={totalKnown}
+        totalItems={isPaymentFilterActive ? displayRows.length : totalKnown}
         itemsPerPage={itemsPerPage}
         onPageChange={setCurrentPage}
         onLimitChange={(limit) => { setItemsPerPage(limit); setCurrentPage(1); }}
@@ -267,20 +388,27 @@ export default function PurchaseOrdersPage() {
         emptyMessage={error ? 'Failed to load purchase orders' : 'No purchase orders found for this selection.'}
       />
 
-      {(isLoading || isFetching || teamLoading || teamFetching) && <Loader />}
+      {(isLoading || isFetching || teamLoading || teamFetching || payLoad || payFetch) && <Loader />}
       {error && (
         <div className="mt-4 p-3 rounded bg-red-50 text-red-700 text-sm border border-red-200">
           {error?.data?.message || 'Failed to load purchase orders'}
+        </div>
+      )}
+      {payError && (
+        <div className="mt-4 p-3 rounded bg-yellow-50 text-yellow-800 text-sm border border-yellow-200">
+          {payError?.data?.message || 'Failed to load payment details'}
         </div>
       )}
 
       {/* Drawer */}
       {viewPOId && (
         <PurchaseOrderViewDrawer
+          setViewPOId={setViewPOId}
           purchaseOrderId={viewPOId}
-          onClose={() => setViewPOId(null)}
+          onClose={() => { setViewPOId(null); router.replace('/dashboard/purchase-orders/All'); }}
         />
       )}
     </div>
   );
 }
+
